@@ -1,4 +1,11 @@
-import type { AuthMeResponse, SessionUser, SignInResponse, SignUpResponse } from "../data/authTypes";
+import type {
+  AuthenticatedUserResponse,
+  AuthMeResponse,
+  PlansResponse,
+  SessionUser,
+  SignInResponse,
+  SignUpResponse,
+} from "../data/authTypes";
 
 const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_URL as string | undefined;
 
@@ -57,6 +64,39 @@ export async function signIn(input: { email: string; password: string }): Promis
   return payload.user;
 }
 
+export async function signUpWithAccessCode(input: {
+  email: string;
+  password: string;
+  accessCode: string;
+}): Promise<SessionUser> {
+  const payload = await requestJson<AuthenticatedUserResponse>("/auth/signup-with-access-code", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return payload.user;
+}
+
+export async function activateWithAccessCode(accessCode: string): Promise<SessionUser> {
+  const payload = await requestJson<AuthenticatedUserResponse>("/plans/activate-with-access-code", {
+    method: "POST",
+    body: JSON.stringify({ accessCode }),
+  });
+  return payload.user;
+}
+
+export async function fetchPlans() {
+  const payload = await requestJson<PlansResponse>("/plans");
+  return payload.plans;
+}
+
+export async function selectPlan(planId: string): Promise<SessionUser> {
+  const payload = await requestJson<AuthenticatedUserResponse>("/plans/select", {
+    method: "POST",
+    body: JSON.stringify({ planId }),
+  });
+  return payload.user;
+}
+
 export async function signOut(): Promise<void> {
   await requestJson<{ status: string }>("/auth/signout", {
     method: "POST",
@@ -71,6 +111,12 @@ export async function requestPasswordReset(email: string): Promise<void> {
   });
 }
 
-// Subscription helpers — enable when plans/checkout are turned back on.
-// export async function fetchPlans() { ... }
-// export async function selectPlan(planId: string) { ... }
+export async function resetPassword(input: {
+  token: string;
+  password: string;
+}): Promise<void> {
+  await requestJson<{ status: string }>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}

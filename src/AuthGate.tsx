@@ -1,19 +1,39 @@
 import React, { useEffect, useState } from "react";
 import { AuthProvider } from "./components/auth/AuthContext";
+import { CustomPlanPage } from "./components/auth/CustomPlanPage";
 import { ForgotPassword } from "./components/auth/ForgotPassword";
+import { PlansPage } from "./components/auth/PlansPage";
+import { ResetPassword } from "./components/auth/ResetPassword";
 import { Signin } from "./components/auth/Signin";
-import { Signup } from "./components/auth/Signup";
-import { getCurrentUser, requestPasswordReset, signIn, signOut as signOutApi, signUp } from "./lib/authApi";
+import type { SessionUser } from "./data/authTypes";
+import { hasActiveSubscription } from "./data/authTypes";
+import {
+  activateWithAccessCode,
+  getCurrentUser,
+  requestPasswordReset,
+  signIn,
+  signOut as signOutApi,
+  signUpWithAccessCode,
+} from "./lib/authApi";
 import { isLocalAdminMode } from "./lib/authMode";
 import {
+  activateLocalAdminSubscription,
+  buildLocalSessionUser,
   isLocalAdminAuthenticated,
   isLocalAdminConfigured,
   signInLocalAdmin,
   signOutLocalAdmin,
 } from "./lib/localAdminAuth";
 
-type AuthView = "signin" | "signup" | "forgotpassword";
+type AuthView = "signin" | "forgotpassword" | "resetpassword" | "plans" | "customplan";
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+
+function getInitialAuthView(): AuthView {
+  if (typeof window !== "undefined" && window.location.pathname === "/reset-password") {
+    return "resetpassword";
+  }
+  return "signin";
+}
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -33,6 +53,9 @@ function formatAuthError(error: unknown): string {
     if (code === "invalid_password") {
       return error.message;
     }
+    if (code === "invalid_access_code") {
+      return "That access code is not valid.";
+    }
     if (code === "user_disabled") {
       return "This account has been disabled.";
     }
@@ -42,32 +65,61 @@ function formatAuthError(error: unknown): string {
 }
 
 const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
-  const [view, setView] = useState<AuthView>("signup");
+  const [view, setView] = useState<AuthView>(getInitialAuthView);
   const [status, setStatus] = useState<AuthStatus>("loading");
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+
+  const completeAuthentication = (nextUser: SessionUser) => {
+    setUser(nextUser);
+    setStatus("authenticated");
+    setView("plans");
+  };
 
   useEffect(() => {
     let cancelled = false;
 
     async function checkSession() {
+      if (getInitialAuthView() === "resetpassword") {
+        if (!cancelled) {
+          setStatus("unauthenticated");
+        }
+        return;
+      }
+
       if (useLocalAdmin) {
         if (!cancelled) {
           if (!isLocalAdminConfigured()) {
-            setError("Local admin login is not configured. Set VITE_ADMIN_USERNAME and VITE_ADMIN_PASSWORD.");
+            setError("Local login is not configured. Set VITE_ADMIN_PASSWORD or VITE_TEST_PASSWORD.");
             setStatus("unauthenticated");
             return;
           }
-          setStatus(isLocalAdminAuthenticated() ? "authenticated" : "unauthenticated");
+
+          if (isLocalAdminAuthenticated()) {
+            const localUser = buildLocalSessionUser();
+            setUser(localUser);
+            setStatus("authenticated");
+            setView("plans");
+            return;
+          }
+
+          setStatus("unauthenticated");
         }
         return;
       }
 
       try {
-        const user = await getCurrentUser();
+        const currentUser = await getCurrentUser();
         if (!cancelled) {
-          setStatus(user ? "authenticated" : "unauthenticated");
+          if (currentUser) {
+            setUser(currentUser);
+            setStatus("authenticated");
+            setView("plans");
+          } else {
+            setStatus("unauthenticated");
+          }
         }
       } catch {
         if (!cancelled) {
@@ -83,36 +135,6 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     };
   }, []);
 
-  const handleSignup = async (email: string, password: string) => {
-    setIsSubmitting(true);
-    setError(null);
-
-    if (useLocalAdmin) {
-      try {
-        const ok = signInLocalAdmin(email, password);
-        if (!ok) {
-          setError("Could not create account. Please try again.");
-          return;
-        }
-        setStatus("authenticated");
-      } catch (err) {
-        setError(formatAuthError(err));
-      } finally {
-        setIsSubmitting(false);
-      }
-      return;
-    }
-
-    try {
-      await signUp({ email, password });
-      setStatus("authenticated");
-    } catch (err) {
-      setError(formatAuthError(err));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleSignin = async (email: string, password: string) => {
     setIsSubmitting(true);
     setError(null);
@@ -124,7 +146,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
           setError("Incorrect username or password.");
           return;
         }
-        setStatus("authenticated");
+        completeAuthentication(buildLocalSessionUser());
       } catch (err) {
         setError(formatAuthError(err));
       } finally {
@@ -134,8 +156,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     }
 
     try {
-      await signIn({ email, password });
-      setStatus("authenticated");
+      const nextUser = await signIn({ email, password });
+      completeAuthentication(nextUser);
     } catch (err) {
       setError(formatAuthError(err));
     } finally {
@@ -163,6 +185,85 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     }
   };
 
+  const handleGuestCustomPlan = async (input: {
+    email: string;
+    password: string;
+    accessCode: string;
+  }) => {
+    setIsSubmitting(true);
+    setError(null);
+
+    if (useLocalAdmin) {
+      try {
+        if (!activateLocalAdminSubscription(input.accessCode)) {
+          setError("That access code is not valid.");
+          return;
+        }
+
+        const ok = signInLocalAdmin(input.email, input.password);
+        if (!ok) {
+          setError("An account already exists for this email.");
+          return;
+        }
+
+        completeAuthentication(buildLocalSessionUser());
+      } catch (err) {
+        setError(formatAuthError(err));
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    try {
+      const nextUser = await signUpWithAccessCode(input);
+      completeAuthentication(nextUser);
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleActivateCustomPlan = async (accessCode: string) => {
+    setIsSubmitting(true);
+    setError(null);
+
+    if (useLocalAdmin) {
+      try {
+        if (!activateLocalAdminSubscription(accessCode)) {
+          setError("That access code is not valid.");
+          return;
+        }
+        completeAuthentication(buildLocalSessionUser());
+      } catch (err) {
+        setError(formatAuthError(err));
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    try {
+      const nextUser = await activateWithAccessCode(accessCode);
+      completeAuthentication(nextUser);
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSignInClick = () => {
+    window.history.replaceState({}, "", "/");
+    setError(null);
+    setResetEmailSent(false);
+    setView("signin");
+    if (status === "authenticated") {
+      setStatus("unauthenticated");
+    }
+  };
+
   const handleSignOut = async () => {
     if (useLocalAdmin) {
       signOutLocalAdmin();
@@ -173,10 +274,56 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
         // Still return to the sign-in screen if the API is unreachable.
       }
     }
+    setUser(null);
     setError(null);
-    setView("signup");
+    setView("signin");
     setStatus("unauthenticated");
   };
+
+  const renderSubscriptionFlow = (isAuthenticated: boolean) => (
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
+      {view === "customplan" ? (
+        <CustomPlanPage
+          userEmail={user?.email}
+          isAuthenticated={isAuthenticated}
+          onGuestSubmit={handleGuestCustomPlan}
+          onActivate={handleActivateCustomPlan}
+          onSignInClick={() => {
+            setError(null);
+            setView("signin");
+            if (isAuthenticated) {
+              setStatus("unauthenticated");
+            }
+          }}
+          errorMessage={error}
+          isSubmitting={isSubmitting}
+        />
+      ) : (
+        <PlansPage
+          onCustomPlanClick={() => {
+            setError(null);
+            setView("customplan");
+          }}
+          onSignInClick={
+            isAuthenticated
+              ? undefined
+              : () => {
+                  setError(null);
+                  setView("signin");
+                }
+          }
+        />
+      )}
+    </main>
+  );
+
+  if (view === "resetpassword") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
+        <ResetPassword onSignInClick={handleSignInClick} />
+      </main>
+    );
+  }
 
   if (status === "loading") {
     return (
@@ -187,6 +334,10 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   }
 
   if (status !== "authenticated") {
+    if (view === "plans" || view === "customplan") {
+      return renderSubscriptionFlow(false);
+    }
+
     return (
       <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
         {view === "signin" ? (
@@ -194,7 +345,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
             onSubmit={handleSignin}
             onSignUpClick={() => {
               setError(null);
-              setView("signup");
+              setView("plans");
             }}
             onForgotPasswordClick={() => {
               setError(null);
@@ -204,37 +355,28 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
             errorMessage={error}
             isSubmitting={isSubmitting}
           />
-        ) : view === "forgotpassword" ? (
+        ) : (
           <ForgotPassword
             onSubmit={(email) => void handleForgotPassword(email)}
-            onSignInClick={() => {
-              setError(null);
-              setResetEmailSent(false);
-              setView("signin");
-            }}
+            onSignInClick={handleSignInClick}
             errorMessage={error}
             isSubmitting={isSubmitting}
             emailSent={resetEmailSent}
-          />
-        ) : (
-          <Signup
-            onSubmit={handleSignup}
-            onSignInClick={() => {
-              setError(null);
-              setView("signin");
-            }}
-            errorMessage={error}
-            isSubmitting={isSubmitting}
           />
         )}
       </main>
     );
   }
 
-  // Subscription gate — re-enable when plans are wired up:
-  // if (user?.subscriptionStatus !== "active") redirect to /plans
+  if (!hasActiveSubscription(user)) {
+    return renderSubscriptionFlow(true);
+  }
 
-  return <AuthProvider signOut={handleSignOut}>{children}</AuthProvider>;
+  return (
+    <AuthProvider user={user!} signOut={handleSignOut}>
+      {children}
+    </AuthProvider>
+  );
 };
 
 export default AuthGate;
