@@ -7,6 +7,12 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 5173,
+    proxy: {
+      "/auth": "http://127.0.0.1:3001",
+      "/plans": "http://127.0.0.1:3001",
+      "/admin": "http://127.0.0.1:3001",
+      "/checkout": "http://127.0.0.1:3001",
+    },
   },
   resolve: {
     alias: {

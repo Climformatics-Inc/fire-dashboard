@@ -7,7 +7,7 @@ import type {
   SignUpResponse,
 } from "../data/authTypes";
 
-const AUTH_API_BASE = import.meta.env.VITE_AUTH_API_URL as string | undefined;
+const AUTH_API_BASE = (import.meta.env.VITE_AUTH_API_URL as string | undefined)?.trim() ?? "";
 
 async function parseError(response: Response) {
   const data = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
@@ -17,7 +17,7 @@ async function parseError(response: Response) {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  if (!AUTH_API_BASE) {
+  if (!AUTH_API_BASE && import.meta.env.PROD) {
     throw new Error("Missing VITE_AUTH_API_URL");
   }
 

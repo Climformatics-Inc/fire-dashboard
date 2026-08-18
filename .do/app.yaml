@@ -1,0 +1,38 @@
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+features:
+  - buildpack-stack=ubuntu-22
+ingress:
+  rules:
+    - component:
+        name: fire-dashboard
+      match:
+        authority:
+          exact: ""
+        path:
+          prefix: /
+name: fire-dashboard
+region: sfo
+static_sites:
+  - name: fire-dashboard
+    environment_slug: node-js
+    catchall_document: index.html
+    envs:
+      - key: VITE_USE_LOCAL_ADMIN
+        scope: BUILD_TIME
+        value: "false"
+      - key: VITE_AUTH_MODE
+        scope: BUILD_TIME
+        value: api
+      # Set after deploying fire-dashboard-api Functions (see fire-dashboard-api/DEPLOY.md):
+      - key: VITE_AUTH_API_URL
+        scope: BUILD_TIME
+        value: REPLACE_WITH_FUNCTIONS_AUTH_API_URL
+    github:
+      repo: Climformatics-Inc/fire-dashboard
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    build_command: npm run build
+    output_dir: dist
