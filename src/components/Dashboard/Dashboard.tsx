@@ -3,6 +3,7 @@ import { addDays, format, isValid, parseISO } from "date-fns";
 
 import MapView from "./MapView";
 import Header from "./Header";
+import { LoadingScreen } from "../ui/LoadingScreen";
 import { useChart, type Interval } from "./hooks/useChart";
 import {
   normalizeZoneName,
@@ -44,7 +45,7 @@ export default function Dashboard() {
   // whether to auto-open popup (only when URL requests it)
   const [autoOpenFromUrl, setAutoOpenFromUrl] = useState(false);
 
-  const { data: forecastMetadata, isError: isMetadataError } =
+  const { data: forecastMetadata, isLoading: isMetadataLoading, isError: isMetadataError } =
     useForecastMetadata("fwi");
   const supportedZones = forecastMetadata?.zones ?? [];
   const supportedZoneNames = useMemo(
@@ -166,6 +167,15 @@ export default function Dashboard() {
     },
     applyFromUrl
   );
+
+  const isBootstrappingMetadata =
+    !metadataDefaultsApplied && !hasUrlDateRange && !isMetadataError && isMetadataLoading;
+  const isLoadingInitialChart =
+    metadataDefaultsApplied && canFetchZone && chartData == null && isFetching;
+
+  if (isBootstrappingMetadata || isLoadingInitialChart) {
+    return <LoadingScreen message="Loading dashboard" />;
+  }
 
   /* ---------- render -------------------------------------------------------- */
   return (

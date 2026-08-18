@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import { AuthProvider } from "./components/auth/AuthContext";
-import { CustomPlanPage } from "./components/auth/CustomPlanPage";
 import { ForgotPassword } from "./components/auth/ForgotPassword";
-import { PlansPage } from "./components/auth/PlansPage";
 import { ResetPassword } from "./components/auth/ResetPassword";
 import { Signin } from "./components/auth/Signin";
+import { LoadingScreen } from "./components/ui/LoadingScreen";
 import type { SessionUser } from "./data/authTypes";
 import { hasActiveSubscription } from "./data/authTypes";
 import {
@@ -24,6 +23,15 @@ import {
   signInLocalAdmin,
   signOutLocalAdmin,
 } from "./lib/localAdminAuth";
+
+const PlansPage = lazy(() =>
+  import("./components/auth/PlansPage").then((module) => ({ default: module.PlansPage })),
+);
+const CustomPlanPage = lazy(() =>
+  import("./components/auth/CustomPlanPage").then((module) => ({
+    default: module.CustomPlanPage,
+  })),
+);
 
 type AuthView = "signin" | "forgotpassword" | "resetpassword" | "plans" | "customplan";
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -71,6 +79,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("Loading");
 
   const completeAuthentication = (nextUser: SessionUser) => {
     setUser(nextUser);
@@ -136,6 +145,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   }, []);
 
   const handleSignin = async (email: string, password: string) => {
+    setLoadingMessage("Signing in");
     setIsSubmitting(true);
     setError(null);
 
@@ -190,6 +200,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     password: string;
     accessCode: string;
   }) => {
+    setLoadingMessage("Creating your account");
     setIsSubmitting(true);
     setError(null);
 
@@ -226,6 +237,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   };
 
   const handleActivateCustomPlan = async (accessCode: string) => {
+    setLoadingMessage("Activating your plan");
     setIsSubmitting(true);
     setError(null);
 
@@ -282,38 +294,40 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
 
   const renderSubscriptionFlow = (isAuthenticated: boolean) => (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
-      {view === "customplan" ? (
-        <CustomPlanPage
-          userEmail={user?.email}
-          isAuthenticated={isAuthenticated}
-          onGuestSubmit={handleGuestCustomPlan}
-          onActivate={handleActivateCustomPlan}
-          onSignInClick={() => {
-            setError(null);
-            setView("signin");
-            if (isAuthenticated) {
-              setStatus("unauthenticated");
+      <Suspense fallback={<LoadingScreen message="Loading plans" embedded />}>
+        {view === "customplan" ? (
+          <CustomPlanPage
+            userEmail={user?.email}
+            isAuthenticated={isAuthenticated}
+            onGuestSubmit={handleGuestCustomPlan}
+            onActivate={handleActivateCustomPlan}
+            onSignInClick={() => {
+              setError(null);
+              setView("signin");
+              if (isAuthenticated) {
+                setStatus("unauthenticated");
+              }
+            }}
+            errorMessage={error}
+            isSubmitting={isSubmitting}
+          />
+        ) : (
+          <PlansPage
+            onCustomPlanClick={() => {
+              setError(null);
+              setView("customplan");
+            }}
+            onSignInClick={
+              isAuthenticated
+                ? undefined
+                : () => {
+                    setError(null);
+                    setView("signin");
+                  }
             }
-          }}
-          errorMessage={error}
-          isSubmitting={isSubmitting}
-        />
-      ) : (
-        <PlansPage
-          onCustomPlanClick={() => {
-            setError(null);
-            setView("customplan");
-          }}
-          onSignInClick={
-            isAuthenticated
-              ? undefined
-              : () => {
-                  setError(null);
-                  setView("signin");
-                }
-          }
-        />
-      )}
+          />
+        )}
+      </Suspense>
     </main>
   );
 
@@ -326,50 +340,63 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   }
 
   if (status === "loading") {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
-        <p className="text-sm text-slate-500">Loading...</p>
-      </main>
-    );
+    return <LoadingScreen message="Loading" />;
   }
+
+  const submittingOverlay = isSubmitting ? (
+    <LoadingScreen message={loadingMessage} overlay />
+  ) : null;
 
   if (status !== "authenticated") {
     if (view === "plans" || view === "customplan") {
-      return renderSubscriptionFlow(false);
+      return (
+        <>
+          {renderSubscriptionFlow(false)}
+          {submittingOverlay}
+        </>
+      );
     }
 
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
-        {view === "signin" ? (
-          <Signin
-            onSubmit={handleSignin}
-            onSignUpClick={() => {
-              setError(null);
-              setView("plans");
-            }}
-            onForgotPasswordClick={() => {
-              setError(null);
-              setResetEmailSent(false);
-              setView("forgotpassword");
-            }}
-            errorMessage={error}
-            isSubmitting={isSubmitting}
-          />
-        ) : (
-          <ForgotPassword
-            onSubmit={(email) => void handleForgotPassword(email)}
-            onSignInClick={handleSignInClick}
-            errorMessage={error}
-            isSubmitting={isSubmitting}
-            emailSent={resetEmailSent}
-          />
-        )}
-      </main>
+      <>
+        <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
+          {view === "signin" ? (
+            <Signin
+              onSubmit={handleSignin}
+              onSignUpClick={() => {
+                setError(null);
+                setView("plans");
+              }}
+              onForgotPasswordClick={() => {
+                setError(null);
+                setResetEmailSent(false);
+                setView("forgotpassword");
+              }}
+              errorMessage={error}
+              isSubmitting={isSubmitting}
+            />
+          ) : (
+            <ForgotPassword
+              onSubmit={(email) => void handleForgotPassword(email)}
+              onSignInClick={handleSignInClick}
+              errorMessage={error}
+              isSubmitting={isSubmitting}
+              emailSent={resetEmailSent}
+            />
+          )}
+        </main>
+        {submittingOverlay}
+      </>
     );
   }
 
   if (!hasActiveSubscription(user)) {
-    return renderSubscriptionFlow(true);
+    return (
+      <>
+        {renderSubscriptionFlow(true)}
+        {submittingOverlay}
+      </>
+    );
   }
 
   return (
