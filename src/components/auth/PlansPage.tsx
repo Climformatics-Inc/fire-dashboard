@@ -37,7 +37,7 @@ export function PlansPage({ onCustomPlanClick, onSignInClick }: PlansPageProps) 
             href="https://climformatics.com/"
           />
           <PlanCard
-            title="Custom plan"
+            title="Enterprise plan"
             description="Organization access for approved partners using a reusable access code."
             buttonLabel="Get Started"
             onSelect={onCustomPlanClick}
