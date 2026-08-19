@@ -9,7 +9,7 @@ type PlansPageProps = {
 export function PlansPage({ onCustomPlanClick, onSignInClick }: PlansPageProps) {
   return (
     <AuthLayout
-      title="Fire Weather Dashboard"
+      title="ClimPrepare"
       subtitle="Climate-informed fire danger products for operational planning and risk assessment."
       variant="wide"
     >
