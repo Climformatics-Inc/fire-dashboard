@@ -7,14 +7,13 @@ interface Props {
   selectedVariable: string;
   disabled?: boolean;
   className?: string;
-  zone?: string;           // NEW (e.g., "Redding", "Amplicam")
-  interval?: Interval;     // NEW ("hourly" | "daily" | "monthly")
+  zone?: string;
+  interval?: Interval;
 }
 
 const toYMD = (v: string | Date) => {
   const d = typeof v === "string" ? new Date(v) : v;
   if (Number.isNaN(+d)) {
-    // fallback if the string isn't ISO—just take YYYY-MM-DD
     const s = String(v);
     return s.length >= 10 ? s.slice(0, 10) : s;
   }
@@ -29,6 +28,9 @@ const slug = (s: string) =>
     .replace(/\s+/g, "_")
     .toLowerCase();
 
+export const forecastActionButtonClass =
+  "flex h-12 w-full cursor-pointer items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium leading-none text-gray-900 shadow-sm hover:bg-gray-100 hover:!border-gray-300 focus:outline-none focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white";
+
 export default function ExportCsvButton({
   data,
   selectedVariable,
@@ -42,15 +44,15 @@ export default function ExportCsvButton({
     if (!s) return;
 
     const start = toYMD(s.time[0]);
-    const end   = toYMD(s.time[s.time.length - 1]);
+    const end = toYMD(s.time[s.time.length - 1]);
     const today = toYMD(new Date());
 
     const parts = [
-      slug(s.label),                     // variable
+      slug(s.label),
       interval ? slug(interval) : undefined,
       zone ? slug(zone) : undefined,
-      `${start}_to_${end}`,              // range
-      `dl-${today}`,                     // download day
+      `${start}_to_${end}`,
+      `dl-${today}`,
     ].filter(Boolean);
 
     const filename = `${parts.join("__")}.csv`;
@@ -78,7 +80,7 @@ export default function ExportCsvButton({
       onClick={handleClick}
       disabled={isDisabled}
       title={isDisabled ? "No data to export yet" : "Download CSV for this chart"}
-      className={`mt-4 w-full rounded-lg border border-black bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 ${className ?? ""}`}
+      className={`${forecastActionButtonClass} ${className ?? ""}`}
     >
       Download CSV
     </button>

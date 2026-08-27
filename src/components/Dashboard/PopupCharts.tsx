@@ -14,7 +14,7 @@ interface Props {
   isFetching?: boolean;
   error?: unknown;
   zone?: string;
-  interval?: "hourly" | "daily" | "monthly";
+  interval?: "hourly" | "daily" | "weekly" | "monthly";
   compact?: boolean;
 }
 
@@ -278,6 +278,17 @@ const PopupCharts: React.FC<Props> = ({
       </div>
     );
   }
+  if (interval === "weekly") {
+    return (
+      <div className="relative w-full h-full p-4 text-gray-600">
+        <div className="font-semibold mb-1">Weekly data coming soon</div>
+        <div className="text-sm opacity-80">
+          Weekly forecasts are not available yet. Switch to Daily to view chart data.
+        </div>
+      </div>
+    );
+  }
+
   if (!data?.time || !data.time.length) {
     return (
       <div className="relative w-full h-full">

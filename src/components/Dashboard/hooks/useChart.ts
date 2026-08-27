@@ -4,7 +4,7 @@ import { FWI_API_URL } from "./useForecastMetadata";
 
 /* ───────────────────────────────── types ───────────────────────────────── */
 
-export type Interval = "hourly" | "daily" | "monthly";
+export type Interval = "hourly" | "daily" | "weekly" | "monthly";
 
 type ErrorBars = { plus?: number[]; minus?: number[] };
 

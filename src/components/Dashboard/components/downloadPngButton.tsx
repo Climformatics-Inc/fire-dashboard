@@ -1,7 +1,6 @@
 import React, { useRef } from "react";
-// Simple, reliable: statically import Plotly from the dist package you installed.
-// If you prefer the "basic" build, change the import to "plotly.js-basic-dist-min".
 import Plotly from "plotly.js-dist-min";
+import { forecastActionButtonClass } from "./exportCsvButton";
 
 // label map kept small to avoid an extra import
 const varLabels: Record<string, string> = {
@@ -34,7 +33,7 @@ const slug = (s: string) =>
 interface Props {
   data: any;
   selectedVariable: string;
-  interval?: "hourly" | "daily" | "monthly";
+  interval?: "hourly" | "daily" | "weekly" | "monthly";
   zone?: string;
   className?: string;
 }
@@ -46,16 +45,15 @@ export default function DownloadPngButton({
   zone,
   className,
 }: Props) {
-  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
 
   const disabled = !data?.time?.length;
 
   const handleClick = async () => {
     if (disabled) return;
 
-    // Find the Plotly chart within the same popup
     const container =
-      anchorRef.current?.closest(".leaflet-popup-content") ||
+      anchorRef.current?.closest("[data-forecast-panel]") ||
       anchorRef.current?.closest(".re-resizable") ||
       document.body;
 
@@ -95,16 +93,15 @@ export default function DownloadPngButton({
   };
 
   return (
-    <div ref={anchorRef} className={className}>
-      <button
-        type="button"
-        className="mt-2 w-full rounded-lg border  bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={disabled}
-        onClick={handleClick}
-        title={disabled ? "No chart available to export" : "Download this chart as PNG"}
-      >
-        Download PNG
-      </button>
-    </div>
+    <button
+      ref={anchorRef}
+      type="button"
+      className={`${forecastActionButtonClass} ${className ?? ""}`}
+      disabled={disabled}
+      onClick={handleClick}
+      title={disabled ? "No chart available to export" : "Download this chart as PNG"}
+    >
+      Download PNG
+    </button>
   );
 }

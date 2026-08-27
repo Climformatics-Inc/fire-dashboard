@@ -51,9 +51,34 @@ const MyPopup: React.FC<MyPopupProps> = ({
   const [layersH, setLayersH] = useState(0);
 
   const measureChrome = () => {
+    const mapEl = map?.getContainer();
     const sideEl = document.getElementById("sidePanel");
     const layersEl = document.querySelector(".leaflet-control-layers");
-    if (sideEl) setPanelW(sideEl.getBoundingClientRect().width);
+
+    if (mapEl && sideEl) {
+      const mapRect = mapEl.getBoundingClientRect();
+      const sideRect = sideEl.getBoundingClientRect();
+      const sideVisible =
+        sideEl.dataset.collapsed !== "true" &&
+        sideRect.right > mapRect.left + 1;
+
+      if (sideVisible) {
+        setPanelW(Math.max(0, Math.ceil(sideRect.right - mapRect.left)));
+      } else {
+        const reopenEl = document.querySelector<HTMLElement>(
+          '[aria-label="Show side panel"]'
+        );
+        if (reopenEl) {
+          const reopenRect = reopenEl.getBoundingClientRect();
+          setPanelW(Math.max(0, Math.ceil(reopenRect.right - mapRect.left)));
+        } else {
+          setPanelW(0);
+        }
+      }
+    } else {
+      setPanelW(0);
+    }
+
     if (layersEl)
       setLayersH((layersEl as HTMLElement).getBoundingClientRect().height);
   };
@@ -62,7 +87,15 @@ const MyPopup: React.FC<MyPopupProps> = ({
     measureChrome();
     window.addEventListener("resize", measureChrome);
     return () => window.removeEventListener("resize", measureChrome);
-  }, []);
+  }, [map]);
+
+  const handlePopupOpen = () => {
+    measureChrome();
+    requestAnimationFrame(() => {
+      measureChrome();
+      scheduleUpdate();
+    });
+  };
 
   // Compute viewport from the MAP (more accurate than window if the map isn't fullscreen)
   const { vw, vh } = useMemo(() => {
@@ -71,15 +104,12 @@ const MyPopup: React.FC<MyPopupProps> = ({
     return { vw: s.x, vh: s.y };
   }, [map, panelW, layersH]); // changes in chrome usually imply relayout
 
-  const gutter = 10;
+  const gutter = 16;
   const minW = 300;
   const minH = 220;
 
   const maxWidth = Math.max(minW, vw * 0.92 - panelW - gutter);
   const maxHeight = Math.max(minH + 20, vh * 0.88 - layersH - gutter);
-
-  const padTL: [number, number] = [panelW + gutter, layersH + gutter];
-  const padBR: [number, number] = [gutter, gutter];
 
   // Controlled size so we can Max/Reset/clamp
   const [size, setSize] = useState<{ width: number; height: number }>(() => ({
@@ -138,10 +168,12 @@ const MyPopup: React.FC<MyPopupProps> = ({
       ref={popupRef}
       className="!p-0"
       maxWidth={10000} // don't let Leaflet cap the width
-      autoPan
-      keepInView
-      autoPanPaddingTopLeft={padTL}
-      autoPanPaddingBottomRight={padBR}
+      autoPan={false}
+      keepInView={false}
+      eventHandlers={{
+        add: handlePopupOpen,
+        popupopen: handlePopupOpen,
+      }}
     >
       <Resizable
         size={size}
@@ -165,7 +197,6 @@ const MyPopup: React.FC<MyPopupProps> = ({
         }}
         onResizeStop={() => {
           map?.dragging?.enable?.();
-          map?.scrollWheelZoom?.enable?.();
           scheduleUpdate();
         }}
         handleComponent={{

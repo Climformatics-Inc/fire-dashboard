@@ -1,8 +1,9 @@
 import React from "react";
+import { forecastActionButtonClass } from "./exportCsvButton";
 
 type Props = {
   selectedVariable: string;
-  interval: "hourly" | "daily" | "monthly";
+  interval: "hourly" | "daily" | "weekly" | "monthly";
   from: string; // yyyy-MM-dd
   to: string;   // yyyy-MM-dd
   zone?: string;
@@ -58,10 +59,7 @@ const ShareLinkButton: React.FC<Props> = ({
     <button
       type="button"
       onClick={onClick}
-      className={
-        className ??
-        "w-full rounded-lg border border-black bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-gray-50"
-      }
+      className={className ?? forecastActionButtonClass}
       title="Copy a link to this exact view"
     >
       {copied ? "Copied!" : "Copy link to this view"}

@@ -10,16 +10,18 @@ import {
   useForecastMetadata,
 } from "./hooks/useForecastMetadata";
 import { useUrlState, type UrlState } from "./utils/useUrlState";
+import { rangesEqual, singleWeekRange } from "./utils/weekRange";
 
 /* ---------- helpers -------------------------------------------------------- */
 const sliderMax = (intv: Interval, from: Date, to: Date) => {
   const days = Math.floor((+to - +from) / 86_400_000) + 1;
   if (intv === "hourly") return days * 24;
+  if (intv === "weekly") return Math.ceil(days / 7);
   if (intv === "monthly") return Math.ceil(days / 30);
   return days; // daily
 };
 const isIntv = (v: any): v is Interval =>
-  v === "hourly" || v === "daily" || v === "monthly";
+  v === "hourly" || v === "daily" || v === "weekly" || v === "monthly";
 
 /* ---------- component ------------------------------------------------------ */
 export default function Dashboard() {
@@ -52,6 +54,15 @@ export default function Dashboard() {
     () => new Set(supportedZones.map(normalizeZoneName)),
     [supportedZones]
   );
+  const locationOptions = useMemo(() => {
+    const zones = forecastMetadata?.zones ?? [];
+    if (zones.length) {
+      return [...zones].sort((a, b) => a.localeCompare(b));
+    }
+    const fromMarkers =
+      forecastMetadata?.location_markers?.map((marker) => marker.zone) ?? [];
+    return [...new Set(fromMarkers)].sort((a, b) => a.localeCompare(b));
+  }, [forecastMetadata]);
   const canFetchZone =
     !!zone &&
     (!supportedZones.length || supportedZoneNames.has(normalizeZoneName(zone)));
@@ -77,8 +88,19 @@ export default function Dashboard() {
     start: startStr,
     end: endStr,
     interval,
-    enabled: metadataDefaultsApplied || hasUrlDateRange || isMetadataError,
+    enabled:
+      (metadataDefaultsApplied || hasUrlDateRange || isMetadataError) &&
+      interval !== "weekly",
   });
+
+  useEffect(() => {
+    if (interval !== "weekly") return;
+    setCalendarRange((prev) => {
+      const single = singleWeekRange(prev.from);
+      return rangesEqual(prev, single) ? prev : single;
+    });
+    setSliderValue(0);
+  }, [interval]);
 
   useEffect(() => {
     if (metadataDefaultsApplied || hasUrlDateRange || !forecastMetadata) return;
@@ -115,7 +137,9 @@ export default function Dashboard() {
   const applyFromUrl = useCallback(
     (u: UrlState) => {
       if (u.variable) setSelectedVariable(u.variable);
-      if (isIntv(u.interval) && u.interval === "daily") setInterval(u.interval);
+      if (isIntv(u.interval) && (u.interval === "daily" || u.interval === "weekly")) {
+        setInterval(u.interval);
+      }
       if (u.zone) setZone(u.zone);
 
       let nextFrom = calendarRange.from;
@@ -123,8 +147,14 @@ export default function Dashboard() {
       if (u.from && !Number.isNaN(Date.parse(u.from)))
         nextFrom = new Date(u.from);
       if (u.to && !Number.isNaN(Date.parse(u.to))) nextTo = new Date(u.to);
-      if (+nextFrom <= +nextTo)
-        setCalendarRange({ from: nextFrom, to: nextTo });
+      if (+nextFrom <= +nextTo) {
+        const nextRange = { from: nextFrom, to: nextTo };
+        setCalendarRange(
+          isIntv(u.interval) && u.interval === "weekly"
+            ? singleWeekRange(nextFrom)
+            : nextRange,
+        );
+      }
 
       if (u.t != null) {
         const intv = isIntv(u.interval) ? u.interval : interval;
@@ -171,7 +201,11 @@ export default function Dashboard() {
   const isBootstrappingMetadata =
     !metadataDefaultsApplied && !hasUrlDateRange && !isMetadataError && isMetadataLoading;
   const isLoadingInitialChart =
-    metadataDefaultsApplied && canFetchZone && chartData == null && isFetching;
+    metadataDefaultsApplied &&
+    canFetchZone &&
+    interval !== "weekly" &&
+    chartData == null &&
+    isFetching;
 
   if (isBootstrappingMetadata || isLoadingInitialChart) {
     return <LoadingScreen message="Loading dashboard" />;
@@ -179,9 +213,9 @@ export default function Dashboard() {
 
   /* ---------- render -------------------------------------------------------- */
   return (
-    <div className="h-screen flex flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <Header />
-      <div className="relative flex-1 overflow-visible">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         <MapView
           /* map controls */
           sliderValue={clampedSliderValue}
@@ -200,6 +234,8 @@ export default function Dashboard() {
           error={isError ? (error as unknown) : undefined}
           supportedZones={supportedZones}
           locationMarkers={forecastMetadata?.location_markers}
+          locationOptions={locationOptions}
+          locationsLoading={isMetadataLoading && !forecastMetadata}
           /* NEW: open popup only when a shared link asked for it */
           autoOpenPopup={autoOpenFromUrl}
         />

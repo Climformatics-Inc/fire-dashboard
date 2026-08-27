@@ -104,3 +104,56 @@ button:focus-visible {
 .leaflet-popup-content-wrapper {
   z-index: 2500 !important;
 }
+
+/* Zoom lives top-right only (below layers control) */
+.leaflet-top.leaflet-left .leaflet-control-zoom {
+  display: none !important;
+}
+
+/* Side panel scrollbar — match panel glass background */
+.side-panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.7) transparent;
+}
+
+.side-panel-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.side-panel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.side-panel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.side-panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+/* Forecast card scrollbar — match card white background */
+.forecast-card-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff transparent;
+}
+
+.forecast-card-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.forecast-card-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.forecast-card-scroll::-webkit-scrollbar-thumb {
+  background: #ffffff;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.forecast-card-scroll::-webkit-scrollbar-thumb:hover {
+  background: #f9fafb;
+}

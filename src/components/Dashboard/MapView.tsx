@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -6,18 +6,18 @@ import {
   GeoJSON,
   LayersControl,
   ScaleControl,
+  ZoomControl,
   LayerGroup,
+  useMap,
 } from "react-leaflet";
 import { format, addDays, differenceInDays } from "date-fns";
 import "leaflet/dist/leaflet.css";
-import type { Marker as LeafletMarker } from "leaflet";
-
 import L from "leaflet";
 import icon from "leaflet/dist/images/marker-icon.png";
 import iconShadow from "leaflet/dist/images/marker-shadow.png";
 import { useQueryClient } from "@tanstack/react-query";
 
-import MyPopup from "./MyPopup";
+import CenteredForecastPanel from "./CenteredForecastPanel";
 import PopupCharts from "./PopupCharts";
 import Cards from "./Cards";
 import SidePanel from "./SidePanel";
@@ -31,6 +31,7 @@ import {
   type ForecastLocationMarker,
 } from "./hooks/useForecastMetadata";
 import { useStaticJson } from "./hooks/useStaticJson";
+import { formatWeekLabel } from "./utils/weekRange";
 import { useDebounced } from "./hooks/useDebounced";
 
 import ExportCsvButton from "./components/exportCsvButton";
@@ -60,6 +61,28 @@ const MAP_CENTER: [number, number] = [37.59, -120.84];
 const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow });
 L.Marker.prototype.options.icon = DefaultIcon;
 
+function MapZoomLock({ locked }: { locked: boolean }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+
+    if (locked) {
+      map.scrollWheelZoom.disable();
+      map.doubleClickZoom.disable();
+      map.touchZoom.disable();
+      map.boxZoom.disable();
+    } else {
+      map.scrollWheelZoom.enable();
+      map.doubleClickZoom.enable();
+      map.touchZoom.enable();
+      map.boxZoom.enable();
+    }
+  }, [map, locked]);
+
+  return null;
+}
+
 function ActionBar({
   selectedVariable,
   interval,
@@ -84,14 +107,9 @@ function ActionBar({
       {/* Fixed button sizing and layout */}
       <div
         className="
-          grid grid-cols-1 gap-3 sm:grid-cols-3 2xl:grid-cols-1
+          grid grid-cols-1 gap-3 sm:grid-cols-3
           [&>div]:flex [&>div]:items-stretch
-          [&>div>*]:w-full [&>div>*]:h-12 [&>div>*]:m-0
-          [&>div>*]:flex [&>div>*]:items-center [&>div>*]:justify-center
-          [&>div>*]:leading-none [&>div>*]:text-sm [&>div>*]:font-medium
-          [&>div>*]:border [&>div>*]:border-gray-300 [&>div>*]:rounded-md
-          [&>div>*]:bg-white [&>div>*]:hover:bg-gray-50
-          [&>div>*]:transition-colors [&>div>*]:duration-200
+          [&>div>*]:m-0 [&>div>*]:h-12 [&>div>*]:w-full
         "
       >
         <div>
@@ -139,6 +157,8 @@ interface MapViewProps {
   error?: unknown;
   supportedZones?: string[];
   locationMarkers?: ForecastLocationMarker[];
+  locationOptions?: string[];
+  locationsLoading?: boolean;
   setInterval: React.Dispatch<React.SetStateAction<Interval>>;
   setCalendarRange: React.Dispatch<
     React.SetStateAction<{ from: Date; to: Date }>
@@ -163,6 +183,8 @@ const MapView: React.FC<MapViewProps> = ({
   error,
   supportedZones = [],
   locationMarkers = [],
+  locationOptions = [],
+  locationsLoading = false,
   setInterval,
   setCalendarRange,
   setSelectedVariable,
@@ -170,10 +192,38 @@ const MapView: React.FC<MapViewProps> = ({
 }) => {
   const debouncedSlider = useDebounced(sliderValue, 80);
   const [popupOpen, setPopupOpen] = useState(false);
+  const [sidePanelOpen, setSidePanelOpen] = useState(true);
+  const mapAreaRef = useRef<HTMLDivElement>(null);
+  const [mapAreaSize, setMapAreaSize] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      window.dispatchEvent(new Event("resize"));
+    }, 320);
+    return () => window.clearTimeout(id);
+  }, [sidePanelOpen]);
+
+  useEffect(() => {
+    const el = mapAreaRef.current;
+    if (!el) return;
+
+    const update = () => {
+      setMapAreaSize({ w: el.clientWidth, h: el.clientHeight });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    window.addEventListener("resize", update);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
   const [legendBar, setLegendBar] = useState<any[] | null>(null);
   const [legendError, setLegendError] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const markerRefs = useRef<Record<string, LeafletMarker | null>>({});
   const supportedZoneSet = useMemo(
     () => new Set(supportedZones.map(normalizeZoneName)),
     [supportedZones]
@@ -240,6 +290,34 @@ const MapView: React.FC<MapViewProps> = ({
     });
   };
 
+  const handleZoneSelect = useCallback(
+    (selectedZone: string) => {
+      setZone(selectedZone);
+      if (!selectedZone) return;
+      if (
+        supportedZones.length &&
+        !supportedZoneSet.has(normalizeZoneName(selectedZone))
+      )
+        return;
+      prefetchChart(queryClient, {
+        zone: selectedZone,
+        start: startStr,
+        end: endStr,
+        interval,
+      });
+      setPopupOpen(true);
+    },
+    [
+      setZone,
+      startStr,
+      endStr,
+      interval,
+      supportedZones,
+      supportedZoneSet,
+      queryClient,
+    ]
+  );
+
   const tileUrl = useMemo(() => {
     const varCode = VARIABLE_MAPPING[selectedVariable] ?? "tmmx";
     const dateStr = "20250101";
@@ -277,25 +355,21 @@ const MapView: React.FC<MapViewProps> = ({
   useEffect(() => {
     if (!zone || !autoOpenPopup) return;
 
-    let raf = 0;
-    const tryOpen = (tries = 0) => {
-      const m = markerRefs.current[zone];
-      if (m && m.getPopup()) {
-        m.openPopup();
-        requestAnimationFrame(() => m.getPopup()?.update());
+    setPopupOpen(true);
 
-        // One-shot: remove `popup` so refresh goes back to map view
-        const url = new URL(window.location.href);
-        url.searchParams.delete("popup");
-        window.history.replaceState(null, "", url.toString());
-        return;
-      }
-      if (tries < 30) raf = requestAnimationFrame(() => tryOpen(tries + 1));
-    };
-
-    tryOpen();
-    return () => cancelAnimationFrame(raf);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("popup");
+    window.history.replaceState(null, "", url.toString());
   }, [zone, autoOpenPopup]);
+
+  const activeLocation = useMemo(
+    () => forecastLocations.find((marker) => marker.zone === zone),
+    [forecastLocations, zone]
+  );
+
+  const sideInsetLeft = sidePanelOpen ? 312 : 44;
+  const forecastAreaWidth = Math.max(0, mapAreaSize.w - sideInsetLeft);
+  const forecastAreaHeight = Math.max(0, mapAreaSize.h - 32);
 
   const [showLines, setShowLines] = useState(false);
 
@@ -333,6 +407,8 @@ const MapView: React.FC<MapViewProps> = ({
     } else if (interval === "daily") {
       currentDate = addDays(calendarRange.from, sliderValue);
       return currentDate.toDateString();
+    } else if (interval === "weekly") {
+      return formatWeekLabel(calendarRange.from);
     } else if (interval === "monthly") {
       currentDate.setMonth(calendarRange.from.getMonth() + sliderValue);
       return currentDate.toDateString();
@@ -340,16 +416,19 @@ const MapView: React.FC<MapViewProps> = ({
     return calendarRange.from.toDateString();
   };
 
-  const cardsLoading = isFetching || chartData == null;
+  const cardsLoading = interval === "weekly" || isFetching || chartData == null;
 
   return (
-    <div className="relative w-full h-full">
+    <div ref={mapAreaRef} className="relative h-full w-full">
       <MapContainer
         center={MAP_CENTER}
         zoom={6}
+        zoomControl={false}
         preferCanvas={true}
         style={{ width: "100%", height: "100%" }}
       >
+        <MapZoomLock locked={popupOpen} />
+
         <ScaleControl position="bottomleft" imperial={true} />
         <LayersControl position="topright">
           {/* Base layer (OSM) */}
@@ -511,13 +590,12 @@ const MapView: React.FC<MapViewProps> = ({
 
         </LayersControl>
 
-        {/* Markers & Popups */}
+        {!popupOpen && <ZoomControl position="topright" />}
+
+        {/* Markers */}
         {forecastLocations.map((marker) => (
           <Marker
             key={marker.location}
-            ref={(ref) => {
-              markerRefs.current[marker.zone] = ref;
-            }}
             position={[marker.lat, marker.lon]}
             {...(normalizeZoneName(marker.zone) === "amplicam"
               ? { icon: cameraIcon }
@@ -527,161 +605,192 @@ const MapView: React.FC<MapViewProps> = ({
               click: () => {
                 setZone(marker.zone);
                 prefetch(marker.zone);
-              },
-              popupopen: (e) => {
                 setPopupOpen(true);
-                prefetch(marker.zone);
-                requestAnimationFrame(() => {
-                  const marker = e?.target as L.Marker;
-                  marker?.getPopup()?.update();
-                });
               },
-              popupclose: () => setPopupOpen(false),
             }}
-          >
-            <MyPopup>
-              <div className="flex flex-col 2xl:flex-row h-[75vh] w-full p-4 gap-4 overflow-y-auto 2xl:overflow-visible">
-                {/* Chart column */}
-                <div className="flex-1 min-w-0">
-                  <div className="h-[60vh] 2xl:h-full">
-                    <PopupCharts
-                      data={chartData}
-                      selectedVariable={selectedVariable}
-                      isFetching={isFetching}
-                      error={error}
-                      zone={marker.zone}
-                      interval={interval}
-                    />
-                  </div>
-
-                  {/* Actions under the chart on <2xl */}
-                  <div className="2xl:hidden">
-                    <ActionBar
-                      selectedVariable={selectedVariable}
-                      interval={interval}
-                      from={startStr}
-                      to={endStr}
-                      zone={marker.zone}
-                      t={sliderValue}
-                      data={chartData}
-                      disabled={cardsLoading}
-                    />
-                  </div>
-                </div>
-
-                {/* Right rail - Fixed width and card layout */}
-                <div className="2xl:w-[480px] w-full 2xl:min-w-[480px]">
-                  <div className="2xl:flex 2xl:flex-col 2xl:h-full 2xl:min-h-0">
-                    {/* Cards scroll area with proper sizing */}
-                    <div className="2xl:flex-1 2xl:min-h-0 2xl:overflow-auto 2xl:pr-2">
-                      <h2 className="font-bold mb-4 text-lg">
-                        {marker.zone} Forecast
-                      </h2>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 2xl:gap-4">
-                        <Cards
-                          dense
-                          title="Max Temperature"
-                          value={chartData?.temperature_maximum?.max}
-                          loading={cardsLoading}
-                          className="min-h-[80px]"
-                        />
-                        <Cards
-                          dense
-                          title="Min Temperature"
-                          value={chartData?.temperature_minimum?.min}
-                          loading={cardsLoading}
-                          className="min-h-[80px]"
-                        />
-                        <Cards
-                          dense
-                          title="Max Wind Speed"
-                          value={chartData?.wind_speed?.max}
-                          loading={cardsLoading}
-                          className="min-h-[80px]"
-                        />
-                        <Cards
-                          dense
-                          title="Min Relative Humidity"
-                          value={chartData?.relative_humidity_minimum?.max}
-                          loading={cardsLoading}
-                          className="min-h-[80px]"
-                        />
-                        <Cards
-                          dense
-                          title="Max Fire Weather Index"
-                          value={chartData?.fire_weather_index?.max}
-                          loading={cardsLoading}
-                          className="min-h-[80px]"
-                        />
-                        <Cards
-                          dense
-                          title="Max Severe Fire Danger Index"
-                          value={chartData?.severe_fire_danger_index?.max}
-                          loading={cardsLoading}
-                          className="min-h-[80px]"
-                        />
-                        <Cards
-                          dense
-                          title="Max Burning Index"
-                          value={chartData?.burn_index?.max}
-                          loading={cardsLoading}
-                          className="min-h-[80px]"
-                        />
-                        <Cards
-                          dense
-                          title="Max Energy Release Component"
-                          value={chartData?.energy_release_component?.max}
-                          loading={cardsLoading}
-                          className="min-h-[80px]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Actions fixed at bottom on ≥2xl with proper spacing */}
-                    <div className="hidden 2xl:block 2xl:mt-4 2xl:pt-4 2xl:border-t 2xl:border-gray-200">
-                      <ActionBar
-                        selectedVariable={selectedVariable}
-                        interval={interval}
-                        from={startStr}
-                        to={endStr}
-                        zone={marker.zone}
-                        t={sliderValue}
-                        data={chartData}
-                        disabled={cardsLoading}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </MyPopup>
-          </Marker>
+          />
         ))}
       </MapContainer>
 
+      {popupOpen && activeLocation && forecastAreaWidth > 0 && (
+        <div
+          className="pointer-events-none absolute bottom-4 right-0 top-4 z-[1100]"
+          style={{ left: sideInsetLeft }}
+        >
+          <CenteredForecastPanel
+            areaWidth={forecastAreaWidth}
+            areaHeight={forecastAreaHeight}
+            onClose={() => setPopupOpen(false)}
+          >
+            <div className="flex flex-col gap-4">
+              <div className="min-w-0">
+                <div className="h-[400px] w-full shrink-0 md:h-[460px]">
+                  <PopupCharts
+                    data={chartData}
+                    selectedVariable={selectedVariable}
+                    isFetching={isFetching}
+                    error={error}
+                    zone={activeLocation.zone}
+                    interval={interval}
+                  />
+                </div>
+              </div>
+
+              <div className="w-full">
+                <h2 className="mb-4 text-lg font-bold">
+                  {activeLocation.zone} Forecast
+                </h2>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Cards
+                    dense
+                    title="Max Temperature"
+                    value={chartData?.temperature_maximum?.max}
+                    loading={cardsLoading}
+                    className="min-h-[80px]"
+                  />
+                  <Cards
+                    dense
+                    title="Min Temperature"
+                    value={chartData?.temperature_minimum?.min}
+                    loading={cardsLoading}
+                    className="min-h-[80px]"
+                  />
+                  <Cards
+                    dense
+                    title="Max Wind Speed"
+                    value={chartData?.wind_speed?.max}
+                    loading={cardsLoading}
+                    className="min-h-[80px]"
+                  />
+                  <Cards
+                    dense
+                    title="Min Relative Humidity"
+                    value={chartData?.relative_humidity_minimum?.max}
+                    loading={cardsLoading}
+                    className="min-h-[80px]"
+                  />
+                  <Cards
+                    dense
+                    title="Max Fire Weather Index"
+                    value={chartData?.fire_weather_index?.max}
+                    loading={cardsLoading}
+                    className="min-h-[80px]"
+                  />
+                  <Cards
+                    dense
+                    title="Max Severe Fire Danger Index"
+                    value={chartData?.severe_fire_danger_index?.max}
+                    loading={cardsLoading}
+                    className="min-h-[80px]"
+                  />
+                  <Cards
+                    dense
+                    title="Max Burning Index"
+                    value={chartData?.burn_index?.max}
+                    loading={cardsLoading}
+                    className="min-h-[80px]"
+                  />
+                  <Cards
+                    dense
+                    title="Max Energy Release Component"
+                    value={chartData?.energy_release_component?.max}
+                    loading={cardsLoading}
+                    className="min-h-[80px]"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <ActionBar
+                  selectedVariable={selectedVariable}
+                  interval={interval}
+                  from={startStr}
+                  to={endStr}
+                  zone={activeLocation.zone}
+                  t={sliderValue}
+                  data={chartData}
+                  disabled={cardsLoading}
+                />
+              </div>
+            </div>
+          </CenteredForecastPanel>
+        </div>
+      )}
+
       <div
-        id="sidePanel"
-        className="
-   absolute top-4 left-12 z-[1000]
-   w-[300px] max-h-[calc(100vh-6rem)] overflow-y-auto
-   p-2 rounded-xl bg-white/70 backdrop-blur
-   border border-gray-200 shadow-xl ring-1 ring-black/5
- "
+        className={[
+          "absolute left-3 top-4 z-[1000]",
+          "transition-transform duration-300 ease-in-out",
+          popupOpen ? "bottom-4" : "bottom-16",
+          sidePanelOpen
+            ? "translate-x-0"
+            : "-translate-x-[calc(100%+0.75rem)]",
+        ].join(" ")}
       >
-        <SidePanel
-          interval={interval}
-          setInterval={setInterval}
-          calendarRange={calendarRange}
-          setCalendarRange={setCalendarRange}
-          selectedVariable={selectedVariable}
-          setSelectedVariable={setSelectedVariable}
-        />
+        <div
+          id="sidePanel"
+          data-collapsed={sidePanelOpen ? undefined : "true"}
+          className="flex h-full w-[300px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white/70 shadow-xl ring-1 ring-black/5 backdrop-blur"
+        >
+          <div className="flex shrink-0 items-center justify-end p-0">
+            <button
+              type="button"
+              onClick={() => setSidePanelOpen(false)}
+              className="cursor-pointer border-0 bg-transparent p-0 pr-[10px] text-lg leading-none text-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+            aria-label="Hide side panel"
+            title="Hide panel"
+          >
+            <span aria-hidden="true" className="text-lg leading-none">
+              ‹
+            </span>
+            </button>
+          </div>
+
+          <div className="side-panel-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-0">
+            <SidePanel
+              interval={interval}
+              setInterval={setInterval}
+              calendarRange={calendarRange}
+              setCalendarRange={setCalendarRange}
+              selectedVariable={selectedVariable}
+              setSelectedVariable={setSelectedVariable}
+              locationOptions={locationOptions}
+              zone={zone}
+              onZoneChange={handleZoneSelect}
+              locationsLoading={locationsLoading}
+            />
+          </div>
+        </div>
       </div>
 
+      {!sidePanelOpen && (
+        <div
+          className={[
+            "absolute left-3 z-[1200] flex items-center",
+            popupOpen ? "top-4 bottom-4" : "top-4 bottom-16",
+          ].join(" ")}
+        >
+          <button
+            type="button"
+            onClick={() => setSidePanelOpen(true)}
+            className="flex cursor-pointer items-center justify-center border-0 bg-transparent p-2 shadow-none hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+            aria-label="Show side panel"
+            title="Show panel"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-white/70 text-gray-600 shadow-xl ring-1 ring-black/5 backdrop-blur">
+              <span aria-hidden="true" className="text-base leading-none">
+                ›
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
+
       {!popupOpen && (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[900] w-[480px]">
+        <div className="absolute bottom-0 left-1/2 z-[900] w-[480px] max-w-[calc(100%-1.5rem)] -translate-x-1/2">
           <ColorBar
             data={rgbMapping[selectedVariable]}
-            rootStyle={{ padding: "3px", borderRadius: "4px" }}
+            rootStyle={{ padding: "3px 3px 0", borderRadius: "4px 4px 0 0" }}
           />
           <Slider
             key={interval}
@@ -693,6 +802,10 @@ const MapView: React.FC<MapViewProps> = ({
                   24
                 : interval === "daily"
                 ? differenceInDays(calendarRange.to, calendarRange.from) + 1
+                : interval === "weekly"
+                ? Math.ceil(
+                    (differenceInDays(calendarRange.to, calendarRange.from) + 1) / 7
+                  )
                 : interval === "monthly"
                 ? Math.ceil(
                     (differenceInDays(calendarRange.to, calendarRange.from) +

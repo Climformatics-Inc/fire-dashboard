@@ -1,6 +1,8 @@
 import React, {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   useDeferredValue,
 } from "react";
@@ -106,6 +108,11 @@ const VARIABLES: VariableDef[] = [
   },
 ];
 
+const TIME_SCALE_OPTIONS = [
+  { value: "daily" as const, label: "Daily" },
+  { value: "weekly" as const, label: "Weekly" },
+];
+
 interface SidePanelProps {
   interval: Interval;
   setInterval: React.Dispatch<React.SetStateAction<Interval>>;
@@ -113,8 +120,12 @@ interface SidePanelProps {
   setCalendarRange: React.Dispatch<
     React.SetStateAction<{ from: Date; to: Date }>
   >;
-  selectedVariable: string; // You can tighten to VarKey later if desired
-  setSelectedVariable: React.Dispatch<React.SetStateAction<string>>; // same here
+  selectedVariable: string;
+  setSelectedVariable: React.Dispatch<React.SetStateAction<string>>;
+  locationOptions?: string[];
+  zone?: string;
+  onZoneChange?: (zone: string) => void;
+  locationsLoading?: boolean;
 }
 
 const SidePanel: React.FC<SidePanelProps> = React.memo(
@@ -125,8 +136,64 @@ const SidePanel: React.FC<SidePanelProps> = React.memo(
     setCalendarRange,
     selectedVariable,
     setSelectedVariable,
+    locationOptions = [],
+    zone = "",
+    onZoneChange,
+    locationsLoading = false,
   }) => {
     const [query, setQuery] = useState("");
+    const [locationInput, setLocationInput] = useState("");
+    const [locationOpen, setLocationOpen] = useState(false);
+    const [timeScaleOpen, setTimeScaleOpen] = useState(false);
+    const timeScaleRef = useRef<HTMLDivElement>(null);
+    const locationRef = useRef<HTMLDivElement>(null);
+
+    const selectedTimeScale =
+      interval === "weekly" ? TIME_SCALE_OPTIONS[1] : TIME_SCALE_OPTIONS[0];
+
+    useEffect(() => {
+      if (!locationOpen) return;
+
+      const handlePointerDown = (event: MouseEvent) => {
+        if (!locationRef.current?.contains(event.target as Node)) {
+          setLocationOpen(false);
+        }
+      };
+
+      document.addEventListener("mousedown", handlePointerDown);
+      return () => document.removeEventListener("mousedown", handlePointerDown);
+    }, [locationOpen]);
+
+    useEffect(() => {
+      if (!timeScaleOpen) return;
+
+      const handlePointerDown = (event: MouseEvent) => {
+        if (!timeScaleRef.current?.contains(event.target as Node)) {
+          setTimeScaleOpen(false);
+        }
+      };
+
+      document.addEventListener("mousedown", handlePointerDown);
+      return () => document.removeEventListener("mousedown", handlePointerDown);
+    }, [timeScaleOpen]);
+
+    const deferredLocationQuery = useDeferredValue(locationInput);
+    const filteredLocations = useMemo(() => {
+      const q = deferredLocationQuery.trim().toLowerCase();
+      if (!q) return locationOptions;
+      return locationOptions.filter((name) =>
+        name.toLowerCase().includes(q)
+      );
+    }, [deferredLocationQuery, locationOptions]);
+
+    const selectLocation = useCallback(
+      (name: string) => {
+        setLocationInput(name);
+        setLocationOpen(false);
+        onZoneChange?.(name);
+      },
+      [onZoneChange]
+    );
 
     // Smooth search typing with React 18 deferred value
     const deferredQuery = useDeferredValue(query);
@@ -250,19 +317,141 @@ const SidePanel: React.FC<SidePanelProps> = React.memo(
     };
 
     return (
-      <div className="text-black p-3 space-y-4">
-        {/* Interval segmented control */}
+      <div className="space-y-4 px-3 pb-3 pt-0 text-black">
+        <div ref={locationRef} className="relative">
+          <label
+            htmlFor="side-panel-location"
+            className="mb-1 block text-xs font-semibold text-gray-600"
+          >
+            Location
+          </label>
+          <input
+            id="side-panel-location"
+            type="text"
+            role="combobox"
+            aria-expanded={locationOpen}
+            aria-controls="side-panel-location-list"
+            aria-autocomplete="list"
+            placeholder={
+              locationsLoading ? "Loading locations…" : "Search locations…"
+            }
+            value={locationInput}
+            disabled={locationsLoading}
+            onChange={(e) => {
+              setLocationInput(e.target.value);
+              setLocationOpen(true);
+            }}
+            onFocus={() => setLocationOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setLocationOpen(false);
+                setLocationInput("");
+              } else if (e.key === "Enter" && filteredLocations.length === 1) {
+                e.preventDefault();
+                selectLocation(filteredLocations[0]!);
+              }
+            }}
+            className="w-full rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+          />
+
+          {locationOpen && !locationsLoading ? (
+            <ul
+              id="side-panel-location-list"
+              role="listbox"
+              aria-label="Locations"
+              className="absolute left-0 right-0 z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg side-panel-scroll"
+            >
+              {filteredLocations.length ? (
+                filteredLocations.map((name) => {
+                  const active = name === zone;
+                  return (
+                    <li key={name} role="presentation">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectLocation(name)}
+                        className={[
+                          "w-full px-3 py-2 text-left text-sm transition-colors cursor-pointer",
+                          active
+                            ? "bg-blue-100 font-medium text-blue-900"
+                            : "bg-white text-gray-900 hover:bg-gray-50",
+                        ].join(" ")}
+                      >
+                        {name}
+                      </button>
+                    </li>
+                  );
+                })
+              ) : (
+                <li className="px-3 py-2 text-sm text-gray-500">No matches.</li>
+              )}
+            </ul>
+          ) : null}
+        </div>
+
+        {/* Time scale */}
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">
+          <label
+            id="time-scale-label"
+            className="block text-xs font-semibold text-gray-600 mb-1"
+          >
             Time Scale
           </label>
           <div
-            className="rounded-xl bg-white/70 backdrop-blur border border-gray-200 p-2"
-            aria-label="Time Scale"
+            ref={timeScaleRef}
+            className="relative rounded-xl bg-white/70 backdrop-blur border border-gray-200 p-2"
           >
-            <div className="inline-flex w-full items-center justify-center rounded-lg border border-blue-300 bg-blue-50 px-2 py-1 text-sm capitalize text-blue-800">
-              Daily
-            </div>
+            <button
+              type="button"
+              id="time-scale-select"
+              aria-haspopup="listbox"
+              aria-expanded={timeScaleOpen}
+              aria-labelledby="time-scale-label"
+              onClick={() => setTimeScaleOpen((open) => !open)}
+              className={[
+                "flex w-full items-center justify-between rounded-lg border border-blue-500 bg-blue-200 px-2 py-1.5 text-sm capitalize text-blue-800 transition-colors cursor-pointer hover:bg-blue-300 hover:border-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60",
+              ].join(" ")}
+            >
+              <span>{selectedTimeScale.label}</span>
+              <span className="text-xs text-blue-600" aria-hidden="true">
+                ▾
+              </span>
+            </button>
+
+            {timeScaleOpen ? (
+              <ul
+                role="listbox"
+                aria-labelledby="time-scale-label"
+                className="absolute left-2 right-2 top-[calc(100%-0.25rem)] z-20 mt-1 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-lg"
+              >
+                {TIME_SCALE_OPTIONS.map((option) => {
+                  const active = selectedTimeScale.value === option.value;
+                  return (
+                    <li key={option.value} role="presentation">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => {
+                          setInterval(option.value);
+                          setTimeScaleOpen(false);
+                        }}
+                        className={[
+                          "w-full px-3 py-2 text-left text-sm capitalize transition-colors cursor-pointer",
+                          active
+                            ? "bg-blue-200 font-medium text-blue-800"
+                            : "bg-white text-blue-800 hover:bg-blue-50",
+                        ].join(" ")}
+                      >
+                        {option.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </div>
         </div>
 
@@ -270,6 +459,7 @@ const SidePanel: React.FC<SidePanelProps> = React.memo(
         <DatePickerRange
           date={calendarRange}
           setCalendarRange={setCalendarRange}
+          interval={interval}
         />
 
         {/* Search */}

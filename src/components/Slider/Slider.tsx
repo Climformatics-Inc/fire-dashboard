@@ -25,11 +25,11 @@ const Slider: React.FC<SliderProps> = ({
   const handle = (e: React.ChangeEvent<HTMLInputElement>) =>
     setValue(Number(e.target.value));
 
-  const fillPct = (value / (max - 1)) * 100;
+  const fillPct = max <= 1 ? 100 : (value / (max - 1)) * 100;
 
   return (
     <div
-      className={`rounded-xl bg-slate-800/60 backdrop-blur p-4 flex flex-col gap-2 w-full ${className}`}
+      className={`rounded-t-xl rounded-b-none bg-slate-800/60 backdrop-blur px-4 py-2.5 flex flex-col gap-1.5 w-full ${className}`}
     >
       {/* label */}
       <p className="text-center text-white text-sm font-light select-none">
@@ -37,7 +37,7 @@ const Slider: React.FC<SliderProps> = ({
       </p>
 
       {/* slider wrapper */}
-      <div className="relative w-full h-5">
+      <div className="relative w-full h-4">
         {/* base track */}
         <div className="absolute inset-0 rounded-full bg-slate-700 pointer-events-none" />
 
@@ -54,7 +54,7 @@ const Slider: React.FC<SliderProps> = ({
           max={max - 1}
           value={value}
           onChange={handle}
-          className="absolute inset-0 w-full h-5 appearance-none bg-transparent cursor-pointer z-10"
+          className="absolute inset-0 w-full h-4 appearance-none bg-transparent cursor-pointer z-10"
         />
       </div>
 
