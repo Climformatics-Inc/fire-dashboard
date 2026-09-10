@@ -16,7 +16,7 @@ function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
-      defaultMonth={new Date("2023-02-01")}
+      fixedWeeks
       className={cn("p-3", className)}
       classNames={{
         months:

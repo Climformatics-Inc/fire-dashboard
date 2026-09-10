@@ -12,6 +12,14 @@ import {
 import type { Interval } from "./hooks/useChart";
 import { formatWeekLabel, singleWeekRange } from "./utils/weekRange";
 
+const calendarPopoverProps = {
+  className: "z-[3000] w-auto border-black bg-white p-0 text-black",
+  align: "start" as const,
+  side: "right" as const,
+  sideOffset: 8,
+  avoidCollisions: false,
+};
+
 const DatePickerRange = ({
   date,
   setCalendarRange,
@@ -69,10 +77,7 @@ const DatePickerRange = ({
                 <span className="truncate">{formatWeekLabel(date.from)}</span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent
-              className="z-[3000] w-auto border-black bg-white p-0 text-black"
-              align="start"
-            >
+            <PopoverContent {...calendarPopoverProps}>
               <Calendar
                 mode="single"
                 selected={date.from}
@@ -105,10 +110,7 @@ const DatePickerRange = ({
               <span className="truncate">{displayDate(date.from)}</span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent
-            className="z-[3000] w-auto border-black bg-white p-0 text-black"
-            align="start"
-          >
+          <PopoverContent {...calendarPopoverProps}>
             <Calendar
               mode="single"
               selected={date.from}
@@ -133,10 +135,7 @@ const DatePickerRange = ({
               <span className="truncate">{displayDate(date.to)}</span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent
-            className="z-[3000] w-auto border-black bg-white p-0 text-black"
-            align="start"
-          >
+          <PopoverContent {...calendarPopoverProps}>
             <Calendar
               mode="single"
               selected={date.to}
