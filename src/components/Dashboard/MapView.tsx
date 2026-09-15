@@ -56,6 +56,14 @@ const VARIABLE_MAPPING: Record<string, string> = {
   severeFireDangerIndex: "sfdi",
 };
 
+// Where {var}/{YYYYMMDD}/{z}/{x}/{y}.png tiles are served from. Defaults to the
+// production Spaces bucket; override (e.g. VITE_TILE_BASE=/tiles) to preview
+// locally generated tiles through the Vite dev proxy.
+const TILE_BASE = (
+  import.meta.env.VITE_TILE_BASE ||
+  "https://usa-gridmet-map-data-do.sfo3.digitaloceanspaces.com"
+).replace(/\/+$/, "");
+
 const MAP_CENTER: [number, number] = [37.59, -120.84];
 
 const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow });
@@ -321,7 +329,7 @@ const MapView: React.FC<MapViewProps> = ({
   const tileUrl = useMemo(() => {
     const varCode = VARIABLE_MAPPING[selectedVariable] ?? "tmmx";
     const dateStr = "20250101";
-    return `https://usa-gridmet-map-data-do.sfo3.digitaloceanspaces.com/${varCode}/${dateStr}/{z}/{x}/{y}.png`;
+    return `${TILE_BASE}/${varCode}/${dateStr}/{z}/{x}/{y}.png`;
   }, [selectedVariable]);
 
   useEffect(() => {
