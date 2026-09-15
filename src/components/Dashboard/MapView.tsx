@@ -10,7 +10,7 @@ import {
   LayerGroup,
   useMap,
 } from "react-leaflet";
-import { format, addDays, differenceInDays } from "date-fns";
+import { format, addDays, addMonths, differenceInDays, min as minDate } from "date-fns";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import icon from "leaflet/dist/images/marker-icon.png";
@@ -63,6 +63,37 @@ const TILE_BASE = (
   import.meta.env.VITE_TILE_BASE ||
   "https://usa-gridmet-map-data-do.sfo3.digitaloceanspaces.com"
 ).replace(/\/+$/, "");
+
+// Map a slider position to the calendar day whose tiles should be shown.
+// Mirrors getDisplayedTime(): hourly steps are hours within the range, daily
+// steps are days, weekly/monthly steps jump to the start of each period.
+// Tiles are daily, so hourly positions collapse onto their day. Clamped to
+// the range end so a slider at max never asks for a date past "to".
+function sliderToTileDate(
+  interval: Interval,
+  from: Date,
+  to: Date,
+  position: number
+): Date {
+  let d: Date;
+  switch (interval) {
+    case "hourly":
+      d = addDays(from, Math.floor(position / 24));
+      break;
+    case "daily":
+      d = addDays(from, position);
+      break;
+    case "weekly":
+      d = addDays(from, position * 7);
+      break;
+    case "monthly":
+      d = addMonths(from, position);
+      break;
+    default:
+      d = from;
+  }
+  return minDate([d, to]);
+}
 
 const MAP_CENTER: [number, number] = [37.59, -120.84];
 
@@ -326,11 +357,25 @@ const MapView: React.FC<MapViewProps> = ({
     ]
   );
 
+  // Use the debounced slider so a drag doesn't fire a tile request per pixel.
+  const tileDateStr = useMemo(
+    () =>
+      format(
+        sliderToTileDate(
+          interval,
+          calendarRange.from,
+          calendarRange.to,
+          debouncedSlider
+        ),
+        "yyyyMMdd"
+      ),
+    [interval, calendarRange.from, calendarRange.to, debouncedSlider]
+  );
+
   const tileUrl = useMemo(() => {
     const varCode = VARIABLE_MAPPING[selectedVariable] ?? "tmmx";
-    const dateStr = "20250101";
-    return `${TILE_BASE}/${varCode}/${dateStr}/{z}/{x}/{y}.png`;
-  }, [selectedVariable]);
+    return `${TILE_BASE}/${varCode}/${tileDateStr}/{z}/{x}/{y}.png`;
+  }, [selectedVariable, tileDateStr]);
 
   useEffect(() => {
     const varCode = VARIABLE_MAPPING[selectedVariable];
@@ -456,7 +501,9 @@ const MapView: React.FC<MapViewProps> = ({
                 url={tileUrl}
                 minZoom={0}
                 maxZoom={14}
-                maxNativeZoom={11}
+                // Tiles are built to z9 (GridMET is 4 km; finer zooms add nothing).
+                // Leaflet upscales z9 tiles beyond this instead of requesting z10+.
+                maxNativeZoom={9}
                 opacity={0.7}
                 crossOrigin={true}
                 noWrap={true}

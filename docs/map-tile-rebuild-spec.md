@@ -147,7 +147,9 @@ Partial migration from GCP; many folder dates do not serve tiles (404).
 ## Open questions for team
 
 1. **Date range:** Backfill Jan–Mar 2025 only, or full 2025? Any 2024 needed?
-2. **Zoom 0–11 confirmed?** (impacts storage size and runtime)
+2. ~~Zoom 0–11 confirmed?~~ **Decided: z0–9.** Measured on the dev server for one var-day:
+   z11 = 78,588 tiles / 312 MB / 12 min; z9 = 3,335 tiles / ~50 s. GridMET is 4 km, so at z9 a
+   cell is already ~13 px; z10–11 add nothing visible. `maxNativeZoom` set to 9 in `MapView.tsx`.
 3. **Run environment:** Cloud Run job, local batch, CI — preference?
 4. **DO Spaces credentials:** Who has write access to `usa-gridmet-map-data-do`?
 5. **FWI / SFDI persistence files:** `gridmet_map_tiles` reads `fwi_/erc_/bi_YYYYMMDD.hdf5`
