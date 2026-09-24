@@ -33,6 +33,7 @@ import {
 import { useStaticJson } from "./hooks/useStaticJson";
 import { formatWeekLabel } from "./utils/weekRange";
 import { useDebounced } from "./hooks/useDebounced";
+import { UI_TO_TILE_VAR } from "./constants/tileVars";
 
 import ExportCsvButton from "./components/exportCsvButton";
 import DownloadPngButton from "./components/downloadPngButton";
@@ -45,16 +46,7 @@ const US_BOUNDS: L.LatLngBoundsExpression = [
 
 const CAMERA_COORDS: [number, number] = [38.65673, -122.657];
 
-const VARIABLE_MAPPING: Record<string, string> = {
-  relativeHumMax: "rmax",
-  relativeHumMin: "rmin",
-  temperatureMax: "tmmx",
-  temperatureMin: "tmmn",
-  windSpeed: "vs",
-  fireWeatherIndex: "fwi",
-  heatStressIndex: "hsi",
-  severeFireDangerIndex: "sfdi",
-};
+const VARIABLE_MAPPING = UI_TO_TILE_VAR;
 
 // Where {var}/{YYYYMMDD}/{z}/{x}/{y}.png tiles are served from. Defaults to the
 // production Spaces bucket; override (e.g. VITE_TILE_BASE=/tiles) to preview

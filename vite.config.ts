@@ -18,6 +18,10 @@ export default defineConfig({
         target: "http://127.0.0.1:8090",
         rewrite: (p) => p.replace(/^\/tiles/, ""),
       },
+      "/availability.json": {
+        target: "https://usa-gridmet-map-data-do.sfo3.digitaloceanspaces.com",
+        changeOrigin: true,
+      },
     },
   },
   resolve: {

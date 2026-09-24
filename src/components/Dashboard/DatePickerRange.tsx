@@ -20,19 +20,41 @@ const calendarPopoverProps = {
   avoidCollisions: false,
 };
 
+type DatePickerRangeProps = {
+  date: { from: Date; to: Date };
+  setCalendarRange: (range: { from: Date; to: Date }) => void;
+  interval?: Interval;
+  availableYmd?: Set<string>;
+  availabilityLoaded?: boolean;
+  availabilityError?: string | null;
+};
+
 const DatePickerRange = ({
   date,
   setCalendarRange,
   interval = "daily",
-}: {
-  date: { from: Date; to: Date };
-  setCalendarRange: (range: { from: Date; to: Date }) => void;
-  interval?: Interval;
-}) => {
+  availableYmd,
+  availabilityLoaded = false,
+  availabilityError = null,
+}: DatePickerRangeProps) => {
   const [fromOpen, setFromOpen] = useState(false);
   const [toOpen, setToOpen] = useState(false);
   const [weekOpen, setWeekOpen] = useState(false);
   const isWeekly = interval === "weekly";
+
+  const showTileShading =
+    availabilityLoaded && !availabilityError && availableYmd != null;
+  const hasAnyTiles = (availableYmd?.size ?? 0) > 0;
+
+  const isAvailable = (value: Date) =>
+    !!availableYmd?.has(format(value, "yyyy-MM-dd"));
+
+  const calendarExtras = showTileShading
+    ? {
+        modifiers: { hasTiles: isAvailable },
+        modifiersClassNames: { hasTiles: "rdp-day-has-tiles" },
+      }
+    : {};
 
   const displayDate = (value: Date) =>
     isValid(value) ? format(value, "MMM d, yyyy") : "Pick a date";
@@ -61,6 +83,14 @@ const DatePickerRange = ({
     setToOpen(false);
   };
 
+  const availabilityHint = !availabilityLoaded
+    ? null
+    : availabilityError
+      ? "Could not load which days have map tiles; all dates are selectable."
+      : !hasAnyTiles
+        ? "No map tiles for this variable yet."
+        : "Shaded days have a map overlay. White days are still selectable; the map will be blank.";
+
   if (isWeekly) {
     return (
       <div className="flex flex-col gap-3 text-black bg-white p-3 rounded border border-black">
@@ -84,6 +114,7 @@ const DatePickerRange = ({
                 defaultMonth={date.from}
                 onSelect={selectWeek}
                 initialFocus
+                {...calendarExtras}
               />
             </PopoverContent>
           </Popover>
@@ -91,6 +122,9 @@ const DatePickerRange = ({
         <p className="text-xs text-slate-600">
           Weeks run Monday–Sunday. Pick any day in a week to select that full week.
         </p>
+        {availabilityHint ? (
+          <p className="text-xs text-slate-600">{availabilityHint}</p>
+        ) : null}
       </div>
     );
   }
@@ -117,6 +151,7 @@ const DatePickerRange = ({
               defaultMonth={date.from}
               onSelect={selectFrom}
               initialFocus
+              {...calendarExtras}
             />
           </PopoverContent>
         </Popover>
@@ -142,10 +177,14 @@ const DatePickerRange = ({
               defaultMonth={date.to}
               onSelect={selectTo}
               initialFocus
+              {...calendarExtras}
             />
           </PopoverContent>
         </Popover>
       </div>
+      {availabilityHint ? (
+        <p className="text-xs text-slate-600">{availabilityHint}</p>
+      ) : null}
     </div>
   );
 };
