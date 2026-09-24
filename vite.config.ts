@@ -12,6 +12,16 @@ export default defineConfig({
       "/plans": "http://127.0.0.1:3001",
       "/admin": "http://127.0.0.1:3001",
       "/checkout": "http://127.0.0.1:3001",
+      // Local map-tile preview: set VITE_TILE_BASE=/tiles and serve the tile
+      // builder's output dir on :8090 (see usa-gridmet-map-tiles README).
+      "/tiles": {
+        target: "http://127.0.0.1:8090",
+        rewrite: (p) => p.replace(/^\/tiles/, ""),
+      },
+      "/availability.json": {
+        target: "https://usa-gridmet-map-data-do.sfo3.digitaloceanspaces.com",
+        changeOrigin: true,
+      },
     },
   },
   resolve: {

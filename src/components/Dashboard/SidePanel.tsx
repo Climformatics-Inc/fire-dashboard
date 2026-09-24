@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { type Interval } from "./hooks/useChart";
 import DatePickerRange from "./DatePickerRange";
+import { useTileAvailability } from "./hooks/useTileAvailability";
 
 /** Single source of truth for variables */
 type VarKey =
@@ -150,6 +151,12 @@ const SidePanel: React.FC<SidePanelProps> = React.memo(
 
     const selectedTimeScale =
       interval === "weekly" ? TIME_SCALE_OPTIONS[1] : TIME_SCALE_OPTIONS[0];
+
+    const {
+      availableYmd,
+      loaded: availabilityLoaded,
+      error: availabilityError,
+    } = useTileAvailability(selectedVariable);
 
     useEffect(() => {
       if (!locationOpen) return;
@@ -460,6 +467,9 @@ const SidePanel: React.FC<SidePanelProps> = React.memo(
           date={calendarRange}
           setCalendarRange={setCalendarRange}
           interval={interval}
+          availableYmd={availableYmd}
+          availabilityLoaded={availabilityLoaded}
+          availabilityError={availabilityError}
         />
 
         {/* Search */}

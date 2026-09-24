@@ -21,6 +21,15 @@
     cursor: pointer;
     border: none;
   }
+
+  .rdp-day-has-tiles:not([aria-selected="true"]) {
+    background-color: #dbeafe !important;
+    color: #1e3a8a !important;
+    font-weight: 500;
+  }
+  .rdp-day-has-tiles:not([aria-selected="true"]):hover {
+    background-color: #bfdbfe !important;
+  }
 }
 @layer base {
   :root {
