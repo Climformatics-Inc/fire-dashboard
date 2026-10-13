@@ -34,6 +34,7 @@ import { useStaticJson } from "./hooks/useStaticJson";
 import { formatWeekLabel } from "./utils/weekRange";
 import { useDebounced } from "./hooks/useDebounced";
 import { UI_TO_TILE_VAR } from "./constants/tileVars";
+import ColorizedTransmissionLines from "./ColorizedTransmissionLines";
 
 import ExportCsvButton from "./components/exportCsvButton";
 import DownloadPngButton from "./components/downloadPngButton";
@@ -416,7 +417,7 @@ const MapView: React.FC<MapViewProps> = ({
   const forecastAreaWidth = Math.max(0, mapAreaSize.w - sideInsetLeft);
   const forecastAreaHeight = Math.max(0, mapAreaSize.h - 32);
 
-  const [showLines, setShowLines] = useState(false);
+  const [showLines, setShowLines] = useState(true);
 
   const { data: linesData } = useStaticJson<any>(
     "https://usa-gridmet-map-data-do.sfo3.digitaloceanspaces.com/Electric-Power-Transmission-Lines.geojson",
@@ -486,7 +487,7 @@ const MapView: React.FC<MapViewProps> = ({
 
           {/* Dynamic tile overlay for GridMET data */}
 
-          <Overlay checked name="Variable map">
+          <Overlay name="Variable map">
             {tileUrl && (
               <TileLayer
                 key={tileUrl} // force re-render when date/style changes
@@ -507,7 +508,7 @@ const MapView: React.FC<MapViewProps> = ({
           </Overlay>
 
           {/* Transmission lines */}
-          <Overlay name="US Transmission Lines">
+          <Overlay checked name="US Transmission Lines">
             <LayerGroup
               eventHandlers={{
                 add: () => setShowLines(true),
@@ -515,15 +516,10 @@ const MapView: React.FC<MapViewProps> = ({
               }}
             >
               {showLines && linesData && (
-                <GeoJSON
+                <ColorizedTransmissionLines
                   data={linesData}
-                  pathOptions={{
-                    renderer: canvasRenderer,
-                    interactive: false,
-                    color: "#444",
-                    weight: 1,
-                    opacity: 0.8,
-                  }}
+                  tileUrl={tileUrl}
+                  weight={2.4}
                 />
               )}
             </LayerGroup>
@@ -531,15 +527,10 @@ const MapView: React.FC<MapViewProps> = ({
 
           <Overlay name="CA Transmission Lines">
             {transmissionLinesCA && (
-              <GeoJSON
+              <ColorizedTransmissionLines
                 data={transmissionLinesCA}
-                pathOptions={{
-                  renderer: canvasRenderer,
-                  interactive: false,
-                  color: "#6B7280", // tailwind gray-500-ish
-                  weight: 1,
-                  opacity: 0.85,
-                }}
+                tileUrl={tileUrl}
+                weight={2.6}
               />
             )}
           </Overlay>
