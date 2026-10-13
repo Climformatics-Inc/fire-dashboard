@@ -33,11 +33,11 @@ export default function Dashboard() {
   // UI / control state
   const [interval, setInterval] = useState<Interval>("daily");
   const [calendarRange, setCalendarRange] = useState({
-    from: new Date(),
-    to: new Date(),
+    from: new Date("2026-09-01T00:00:00"),
+    to: new Date("2026-09-19T00:00:00"),
   });
   const [metadataDefaultsApplied, setMetadataDefaultsApplied] =
-    useState(hasUrlDateRange);
+    useState(true);
   const [sliderValue, setSliderValue] = useState(0);
   const [selectedVariable, setSelectedVariable] = useState("temperatureMax");
 
