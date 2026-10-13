@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GeoJSON, useMap, useMapEvents } from "react-leaflet";
+import { GeoJSON as GeoJSONLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 
 const TILE_SIZE = 256;
@@ -111,8 +111,12 @@ function tileUrlAt(template: string, z: number, x: number, y: number) {
 }
 
 function featureList(data: GeoJSON.GeoJsonObject): GeoJSON.Feature[] {
-  if (data.type === "FeatureCollection") return data.features;
-  if (data.type === "Feature") return [data];
+  if (data.type === "FeatureCollection") {
+    return (data as GeoJSON.FeatureCollection).features;
+  }
+  if (data.type === "Feature") {
+    return [data as GeoJSON.Feature];
+  }
   return [];
 }
 
@@ -243,7 +247,7 @@ export default function ColorizedTransmissionLines({
 
   return (
     <>
-      <GeoJSON
+      <GeoJSONLayer
         data={data}
         pathOptions={{
           renderer: L.canvas({ padding: 0.5 }),
@@ -254,7 +258,7 @@ export default function ColorizedTransmissionLines({
         }}
       />
       {colored && (
-        <GeoJSON
+        <GeoJSONLayer
           key={`${tileUrl}-${colored.features.length}`}
           data={colored}
           style={(feature) => ({
